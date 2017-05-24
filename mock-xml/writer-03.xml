@@ -1,0 +1,5 @@
+<UNTOLD_SEINFELD_WRITER_Result xmlns="http://schemas.datacontract.org/2004/07/UNTOLD.Seinfeld.WriterModel" xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns:z="http://schemas.microsoft.com/2003/10/Serialization/" z:Id="i1">
+  <FIRST_NAME>Peter</FIRST_NAME>
+  <LAST_NAME>Mehlman</LAST_NAME>
+  <WRITER_ID>3</WRITER_ID>
+</UNTOLD_SEINFELD_WRITER_Result>

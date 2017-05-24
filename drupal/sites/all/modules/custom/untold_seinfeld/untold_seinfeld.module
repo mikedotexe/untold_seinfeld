@@ -1,0 +1,302 @@
+<?php
+/**
+ * Implements hook_menu()
+ */
+function untold_seinfeld_menu() {
+  $items = array();
+
+  $items['admin/config/seinfeld'] = array(
+    'title' => 'Seinfeld API integration tests',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('_untold_seinfeld_config_integration_tests'),
+    'access arguments' => array('administer seinfeld configuration'),
+    'type' => MENU_NORMAL_ITEM
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function untold_seinfeld_permission() {
+  return array(
+    'administer seinfeld configuration' => array(
+      'title' => t('Administer Seinfeld Configuration'),
+      'description' => t('Gives access to the Seinfeld settings page.')
+    )
+  );
+}
+
+function  _untold_seinfeld_config_integration_tests($form, &$form_state) {
+  $form = array();
+
+  // we're not taking into consideration dev, staging, and prod for this blog post
+  $form['untold_seinfeld_url'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Seinfeld API'),
+    '#default_value' => variable_get('untold_seinfeld_url', 'https://untold-seinfeld.example.com'),
+  );
+
+  $form['untold_seinfeld_int_test_hours'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Run integration tests after X-hours'),
+    '#description' => t('The (rough) number of hours to run the integration tests.'),
+    '#default_value' => variable_get('untold_seinfeld_int_test_hours', '24'),
+    '#size' => 5,
+  );
+
+  // We'll create a button so you can manually run the tests
+  $form['untold_seinfeld_run_int_tests'] = array(
+    '#type' => 'button',
+    '#value' => t('Run integration tests'),
+  );
+
+  $form['untold_seinfeld_int_test'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Latest integration test results'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+  );
+
+$form['untold_seinfeld_int_test_emails'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Send email upon integration test failure'),
+    '#description' => t('Comma-separated list of emails'),
+    '#default_value' => variable_get('untold_seinfeld_int_test_emails'),
+    '#maxlength' => 1024,
+    '#required' => TRUE,
+  );
+
+  $form['untold_seinfeld_int_test']['untold_seinfeld_int_test_results'] = array(
+    '#markup' =>  _untold_seinfeld_get_int_test_data_table(),
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'Submit',
+  );
+
+  return $form;
+}
+
+function  _untold_seinfeld_config_integration_tests_validate($form, &$form_state) {
+  // check cron frequency
+  if (!is_numeric($form_state['input']['untold_seinfeld_int_test_hours'])) {
+    form_set_error('untold_seinfeld_int_test_hours', 'Please enter a valid number of hours');
+  }
+
+  // validate emails
+  $emails = $form_state['input']['untold_seinfeld_int_test_emails'];
+  $emailsArr = explode(',', $emails);
+  $invalid_email = FALSE;
+  foreach ($emailsArr as $email) {
+    if (!valid_email_address(trim($email))) $invalid_email = TRUE;
+  }
+  if ($invalid_email) {
+    form_set_error('untold_seinfeld_int_test_emails', 'Please enter valid email addresses');
+  }
+
+  // check if they clicked "Run integration tests"
+  // we have to use validate as there's an issue for custom buttons in submit handlers
+  if ($form_state['triggering_element']['#id'] == 'edit-untold-seinfeld-run-int-tests') {
+     _untold_seinfeld_execute_phpunit();
+  }
+}
+
+function  _untold_seinfeld_config_integration_tests_submit($form, &$form_state) {
+  variable_set('untold_seinfeld_int_test_hours', $form_state['input']['untold_seinfeld_int_test_hours']);
+  variable_set('untold_seinfeld_int_test_emails', $form_state['input']['untold_seinfeld_int_test_emails']);
+  variable_set('untold_seinfeld_url', $form_state['input']['untold_seinfeld_url']);
+}
+
+function  _untold_seinfeld_get_int_test_data_table() {
+  $resultsArr =  _untold_seinfeld_get_int_test_data();
+  if (!$resultsArr) return 'No log results found, check the ' . l('logs for more details', 'admin/reports/dblog');
+  // build the Drupal table with this information, returning it to the TMS Integration Tests config form
+
+  // start with the summary
+  $summary_header = array('Tests', 'Assertions', 'Failures', 'Errors', 'Time');
+  $summary_idx = &$resultsArr['summary'];
+  $summary_row = array(array($summary_idx['tests'], $summary_idx['assertions'], $summary_idx['failures'], $summary_idx['errors'], $summary_idx['time']));
+  $summary_table = theme('table', array('header' => $summary_header, 'rows' => $summary_row));
+
+  // now for the results per test class
+  $class_header = array('Name', 'Tests', 'Assertions', 'Failures', 'Errors', 'Details');
+  $class_rows = array();
+  foreach ($resultsArr['classes'] as $class => $result) {
+    $class_rows[] = array(
+      $class,
+      $result['tests'],
+      $result['assertions'],
+      $result['failures'],
+      $result['errors'],
+      $result['failure_details']
+    );
+  }
+  $class_table = theme('table', array('header' => $class_header, 'rows' => $class_rows));
+  $last_run = 'Last run: ' . variable_get('seinfeld_last_int_test_time');
+  return $last_run . '<br/>' . $summary_table . '<br />' . $class_table;
+}
+
+function  _untold_seinfeld_get_int_test_data() {
+  // load PHPUnit log XML file, depending on selected environment
+  $log_path = DRUPAL_ROOT . '/../tests/phpunit/logs/seinfeld.xml';
+  if (!file_exists($log_path)) {
+    watchdog('untold_seinfeld', 'No integration test log file found, creating one', NULL, WATCHDOG_ALERT);
+    return;
+  }
+  $xml = simplexml_load_file($log_path);
+  if (!is_a($xml, 'SimpleXMLElement')) {
+    watchdog('untold_seinfeld', 'Integration test log file is not valid XML', array(), WATCHDOG_ALERT);
+    return;
+  }
+
+  $resultsArr = array();
+  // this function we will be used in a few places, we set a top-level key telling whether failures exist, default to FALSE
+  $resultsArr['has_failures'] = FALSE;
+
+  // begin with the summary
+  $parent_ts = $xml->testsuite;
+  $resultsArr['summary']['tests'] = (string) $parent_ts['tests'];
+  $resultsArr['summary']['assertions'] = (string) $parent_ts['assertions'];
+  $resultsArr['summary']['failures'] = (string) $parent_ts['failures'];
+  $resultsArr['summary']['errors'] = (string) $parent_ts['errors'];
+  $resultsArr['summary']['time'] = (string) $parent_ts['time'];
+
+  // Note: almost all the foreach's should contain one child, looping to make this future-proof
+  foreach ($xml->testsuite->testsuite as $ts) {
+    $ts_name = (string) $ts['name']; // name of PHPUnit test class, like AcceptLoadTest
+    $resultsArr['classes'][$ts_name]['tests'] = (string) $ts['tests'];
+    $resultsArr['classes'][$ts_name]['assertions'] = (string) $ts['assertions'];
+    $resultsArr['classes'][$ts_name]['failures'] = (string) $ts['failures'];
+    $resultsArr['classes'][$ts_name]['errors'] = (string) $ts['errors'];
+    $resultsArr['classes'][$ts_name]['failure_details'] = '';
+
+    // get testcases under testsuite
+    $testcases = $ts->children();
+    foreach ($testcases as $tc) {
+      $failures = $tc->children(); // if there are no failures, the foreach continues on
+      foreach ($failures as $failure) {
+        // just to make sure in case other tests are added, don't want to assume it's a failure
+        if ($failure->getName() == 'failure') {
+          $resultsArr['has_failures'] = TRUE;
+          $resultsArr['classes'][$ts_name]['failure_details'] = (string) $failure;
+        }
+      }
+    }
+  }
+  if ($resultsArr['has_failures']) drupal_set_message('Alert: integration tests have failures', 'warning');
+  return $resultsArr;
+}
+
+/**
+ * Implements hook_cron().
+ */
+function untold_seinfeld_cron() {
+  $min_lifespan = variable_get('untold_seinfeld_int_test_hours', 24);
+  $last_run = variable_get('untold_seinfeld_int_test_hours_last_run', 0);
+
+  if (!empty($min_lifespan)) {
+    // By checking that the value is not empty, an admin could set the min lifespan to 0 and bypass the check.
+    $diff = REQUEST_TIME - $last_run;
+    // Convert hours to seconds for comparison to timestamp difference.
+    if ($diff < ($min_lifespan * 3600)) {
+      // Not enough time has passed for cron to run again
+      return;
+    }
+  }
+
+   _untold_seinfeld_execute_phpunit();
+
+  variable_set('untold_seinfeld_int_test_hours_last_run', REQUEST_TIME);
+}
+
+/**
+ * Runs PHPUnit command for the test suite
+ */
+function  _untold_seinfeld_execute_phpunit() {
+  // check if configuration file exists, since these are not revisioned, build it from variables if it's not there
+  $config_file_path = DRUPAL_ROOT . '/../tests/phpunit/config/seinfeld-config.xml';
+  if (!file_exists($config_file_path)) {
+    // create the file
+     _untold_seinfeld_create_phpunit_config($config_file_path);
+  }
+  $command = DRUPAL_ROOT . '/../vendor/bin/phpunit --configuration ' . DRUPAL_ROOT . '/../tests/phpunit/config/seinfeld-config.xml --testsuite seinfeld';
+  // capture the result of the phpunit test so we can have a watchdog entry for historical purposes
+  // we use output buffering otherwise this function will print to the browser
+  set_time_limit(600);
+  ob_start();
+  system($command);
+  $system_return = ob_get_clean();
+
+  // keep the below for debugging, changing the above line from exec to $system_return = system($command)
+  watchdog('untold_seinfeld', 'PHPUnit responded with: %result', array('%result' => $system_return));
+  $timezone = variable_get('date_default_timezone', date_default_timezone_get());
+  date_default_timezone_set($timezone);
+  variable_set('seinfeld_last_int_test_time', date('m/d/Y g:i:s a', time()));
+
+  // see if this triggered a failure
+  $int_test_results =  _untold_seinfeld_get_int_test_data();
+  if ($int_test_results['has_failures']) {
+    // trigger email
+     _untold_seinfeld_trigger_int_test_failure_email();
+  }
+}
+
+function  _untold_seinfeld_trigger_int_test_failure_email() {
+  $emails = variable_get('untold_seinfeld_int_test_emails');
+  if (is_null($emails)) {
+    watchdog('untold_seinfeld', 'No emails set for the TMS integrations test alerts', array(), WATCHDOG_ALERT);
+    return;
+  }
+
+  global $base_url;
+  $seinfeld_int_config_link = $base_url . '/admin/config/seinfeld';
+  $email_params = array(
+    'subject' => 'Alert: TMS API integration test failure',
+    'body' => 'You are receiving this email due to a failure in the TMS API. To view details of the results, please log in and visit ' . $seinfeld_int_config_link,
+  );
+
+  $emailsArr = explode(',', $emails);
+  foreach ($emailsArr as $email) {
+    drupal_mail('tms', 'seinfeld_alert_int_test_failure', trim($email), language_default(), $email_params);
+    watchdog('untold_seinfeld', 'Email sent alerting %email of TMS integration test failure', array('%email' => trim($email)));
+  }
+}
+
+/**
+ * Implements hook_mail().
+ */
+function untold_seinfeld_mail($key, &$message, $params) {
+  // Grab the subject and body from params and add it to the message.
+  $message['subject'] = $params['subject'];
+  $message['body'][] = $params['body'];
+}
+
+function _untold_seinfeld_create_phpunit_config($config_file_path) {
+  $new_config = new SimpleXMLElement('<phpunit></phpunit>');
+  $new_config->addAttribute('bootstrap', '../../../vendor/autoload.php');
+  $testsuites = $new_config->addChild('testsuites');
+  $testsuite = $testsuites->addChild('testsuite');
+  $testsuite->addAttribute('name', 'seinfeld');
+  $directory = $testsuite->addChild('directory');
+  $testsuite->directory = '../../../drupal/sites/all/modules/custom/untold_seinfeld/phpunit/tests';
+
+  $php = $new_config->addChild('php');
+  $ini_stl = $php->addChild('ini');
+  $ini_stl->addAttribute('name', 'set_timeout_limit');
+  $ini_stl->addAttribute('value', '30');
+
+  $const_url = $php->addChild('const');
+  $const_url->addAttribute('name', 'SEINFELD_API_URL');
+  $const_url->addAttribute('value', variable_get('untold_seinfeld_url', 'https://untold-seinfeld.example.com'));
+
+  $logging = $new_config->addChild('logging');
+  $log = $logging->addChild('log');
+  $log->addAttribute('type', 'junit');
+  $log->addAttribute('target', '../logs/seinfeld.xml');
+
+  // writes the file
+  $new_config->asXML($config_file_path);
+}

@@ -1,0 +1,9 @@
+
+  <UNTOLD_SEINFELD_EPISODE_Result xmlns="http://schemas.datacontract.org/2004/07/UNTOLD.Seinfeld.EpisodeModel" xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns:z="http://schemas.microsoft.com/2003/10/Serialization/" z:Id="i1">
+    <EPISODE_TITLE>The Chinese Woman</EPISODE_TITLE>
+    <SEASON_NUMBER>6</SEASON_NUMBER>
+    <EPISODE_NUMBER>90</EPISODE_NUMBER>
+    <HAS_KRAMER>TRUE</HAS_KRAMER>
+    <HAS_LARRY_DAVID_CAMEO>TRUE</HAS_LARRY_DAVID_CAMEO>
+    <PRIMARY_WRITER_ID>3</PRIMARY_WRITER_ID>
+  </UNTOLD_SEINFELD_EPISODE_Result>

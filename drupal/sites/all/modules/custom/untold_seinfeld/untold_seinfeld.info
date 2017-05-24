@@ -1,0 +1,6 @@
+name = Untold Seinfeld
+description = Integrate with the Seinfeld API
+package = "Untold"
+core = 7.x
+files[] = includes/seinfeld_requests.inc
+configure = admin/config/seinfeld

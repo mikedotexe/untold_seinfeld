@@ -1,0 +1,22 @@
+<ArrayOfUNTOLD_SEINFELD_WRITER_Result xmlns="http://schemas.datacontract.org/2004/07/UNTOLD.Seinfeld.WriterModel" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <UNTOLD_SEINFELD_WRITER_Result xmlns:z="http://schemas.microsoft.com/2003/10/Serialization/" z:Id="i1">
+    <FIRST_NAME>Jerry</FIRST_NAME>
+    <LAST_NAME>Seinfeld</LAST_NAME>
+    <WRITER_ID>0</WRITER_ID>
+  </UNTOLD_SEINFELD_WRITER_Result>
+  <UNTOLD_SEINFELD_WRITER_Result xmlns:z="http://schemas.microsoft.com/2003/10/Serialization/" z:Id="i2">
+    <FIRST_NAME>Larry</FIRST_NAME>
+    <LAST_NAME>David</LAST_NAME>
+    <WRITER_ID>1</WRITER_ID>
+  </UNTOLD_SEINFELD_WRITER_Result>
+  <UNTOLD_SEINFELD_WRITER_Result xmlns:z="http://schemas.microsoft.com/2003/10/Serialization/" z:Id="i3">
+    <FIRST_NAME>Andy</FIRST_NAME>
+    <LAST_NAME>Ackerman</LAST_NAME>
+    <WRITER_ID>2</WRITER_ID>
+  </UNTOLD_SEINFELD_WRITER_Result>
+  <UNTOLD_SEINFELD_WRITER_Result xmlns:z="http://schemas.microsoft.com/2003/10/Serialization/" z:Id="i4">
+    <FIRST_NAME>Peter</FIRST_NAME>
+    <LAST_NAME>Mehlman</LAST_NAME>
+    <WRITER_ID>3</WRITER_ID>
+  </UNTOLD_SEINFELD_WRITER_Result>
+</ArrayOfUNTOLD_SEINFELD_WRITER_Result>
